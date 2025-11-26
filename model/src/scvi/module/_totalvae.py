@@ -24,6 +24,8 @@ from scvi.module.base import BaseMinifiedModeModuleClass, LossOutput, auto_move_
 from scvi.nn import DecoderTOTALVI, EncoderTOTALVI
 from scvi.nn._utils import ExpActivation
 
+from torch_geometric.nn import SGConv, GraphNorm
+
 torch.backends.cudnn.benchmark = True
 
 
@@ -253,6 +255,16 @@ class TOTALVAE(BaseMinifiedModeModuleClass):
             use_layer_norm=use_layer_norm_encoder,
             **_extra_encoder_kwargs,
         )
+
+        self.gnn = SGConv(n_latent, n_latent, 1)
+        self.gnn_norm = GraphNorm(n_latent)
+        
+        graph = torch.load("/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/code/train_val_subgraphs.pt")
+        self.register_buffer("train_edge", graph["train_edge_index"])
+        self.register_buffer("train_weight", graph["train_edge_weight"])
+        self.register_buffer("val_edge", graph["val_edge_index"])
+        self.register_buffer("val_weight", graph["val_edge_weight"])
+
         _extra_decoder_kwargs = extra_decoder_kwargs or {}
         self.decoder = DecoderTOTALVI(
             n_latent + n_continuous_cov,
@@ -590,6 +602,17 @@ class TOTALVAE(BaseMinifiedModeModuleClass):
         )
 
         z = latent["z"]
+
+        # GNN  
+        if z.shape[0] == 2467:  
+            z = self.gnn(z, self.train_edge, self.train_weight)
+        elif z.shape[0] == 25:  
+            z = self.gnn(z, self.val_edge, self.val_weight)
+
+    
+        # z = self.gnn(z, self.G_edges, self.G_weight)
+        z = self.gnn_norm(z)
+
         untran_z = untran_latent["z"]
         untran_l = untran_latent["l"]
         if not self.use_observed_lib_size:

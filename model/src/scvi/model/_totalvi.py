@@ -234,6 +234,9 @@ class TOTALVI(
             }
         else:
             self.modalities = None
+        
+        if True:
+            self.test = "hai"
 
     @devices_dsp.dedent
     def train(
