@@ -1,9 +1,11 @@
 import torch
 import numpy as np
-from sklearn.neighbors import kneighbors_graph
+import mudata as md
+from mudata import MuData
 from scipy.sparse import coo_matrix
-from torch_geometric.utils import from_scipy_sparse_matrix
-
+from sklearn.neighbors import kneighbors_graph
+from sklearn.model_selection import train_test_split
+from torch_geometric.utils import from_scipy_sparse_matrix, subgraph
 
 
 def graph_construction(
@@ -65,3 +67,53 @@ def graph_construction(
     
     return edge_index, edge_weight
 
+def prep_graph_splits(
+    mdata: MuData, 
+    path_to_graph: str,
+    path_to_save_graph_splits: str,
+    train_split: float = 0.75
+):
+    # First generate the splits, get train/val indices
+    all_idx = np.arange(mdata.n_obs)
+    train_idx, val_idx = train_test_split(
+        all_idx,
+        train_size=train_split,
+        random_state=0,
+        shuffle=True
+    )  
+
+    # Load the entire graph
+    graph = torch.load(path_to_graph)
+    edge_idx = graph["edge_index"]
+    edge_weight = graph["edge_weight"]
+
+    # Get the train/val subgraphs
+    train_edge_idx, train_edge_weight = subgraph(
+        torch.from_numpy(train_idx),
+        edge_idx,
+        edge_weight,
+        relabel_nodes=True
+    )
+
+    val_edge_idx, val_edge_weight = subgraph(
+        torch.from_numpy(val_idx),
+        edge_idx,
+        edge_weight,
+        relabel_nodes=True
+    )    
+
+    result = {
+        "full_edge_index": edge_idx,
+        "full_edge_weight": edge_weight,
+        "train_edge_index": train_edge_idx,
+        "train_edge_weight": train_edge_weight,
+        "val_edge_index": val_edge_idx,
+        "val_edge_weight": val_edge_weight,
+        "train_indices": train_idx,
+        "val_indices": val_idx,
+    }
+    
+    if path_to_save_graph_splits:
+        torch.save(result, path_to_save_graph_splits)
+    
+    return result

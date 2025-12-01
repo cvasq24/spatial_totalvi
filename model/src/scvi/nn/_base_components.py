@@ -1,6 +1,6 @@
 import collections
 from collections.abc import Callable, Iterable
-from typing import Literal
+from typing import Literal, Optional
 
 import torch
 from torch import nn
@@ -9,6 +9,8 @@ from torch.nn import ModuleList
 
 from scvi.nn._utils import ExpActivation
 
+from torch.nn import ELU, LeakyReLU, ReLU
+from torch_geometric.nn import SGConv, GCNConv, GraphNorm, LayerNorm, BatchNorm
 
 def _identity(x):
     return x
@@ -1067,3 +1069,57 @@ class EncoderTOTALVI(nn.Module):
         untran_latent["l"] = log_library_gene
 
         return q_z, q_l, latent, untran_latent
+
+class GraphNetworkTOTALVI(nn.Module):
+    def __init__(
+        self,
+        n_layers: int = 1,
+        n_latent: int = 20,
+        conv_type: Literal["SGC", "GCN"] = "SGC",
+        norm_type: Literal["graph", "layer", "batch"] = "graph",
+        act_type: Literal["elu", "relu", "leaky_relu"] = "elu",
+        sgconv_K: Optional[int] = 1,
+    ):
+        super().__init__()
+        self.n_layers = n_layers
+
+        # Building the graph network
+        self.convs = nn.ModuleList()
+        self.norms = nn.ModuleList()
+        for k in range(n_layers):
+            # Convolution
+            if conv_type == "SGC":
+                conv = SGConv(in_channels=n_latent, out_channels=n_latent, K=sgconv_K)
+            elif conv_type == "GCN":
+                conv = GCNConv(in_channels=n_latent, out_channels=n_latent)
+
+            # Normalization
+            if norm_type == "graph":
+                norm = GraphNorm(n_latent)
+            elif norm_type == "layer":
+                norm = LayerNorm(n_latent)
+            elif norm_type == "batch":
+                norm = BatchNorm(n_latent)
+
+            self.convs.append(conv)
+            self.norms.append(norm)
+            
+        # Activation
+        if n_layers > 1:
+            if act_type == "elu":
+                self.act = ELU()
+            elif act_type == "relu":
+                self.act = ReLU()
+            elif act_type == "leaky_relu":
+                self.act = LeakyReLU()
+
+    def forward(self, z, edge_list, weight_list):
+        for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):
+            z = conv(z, edge_list, weight_list)
+            z = norm(z)
+
+            # If non-last layer, add activation function between convolutions
+            if i < self.n_layers-1:
+                z = self.act(z)
+        
+        return z

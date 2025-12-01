@@ -21,10 +21,8 @@ from scvi.distributions import (
 from scvi.model.base import BaseModelClass
 from scvi.module._constants import MODULE_KEYS
 from scvi.module.base import BaseMinifiedModeModuleClass, LossOutput, auto_move_data
-from scvi.nn import DecoderTOTALVI, EncoderTOTALVI
+from scvi.nn import DecoderTOTALVI, EncoderTOTALVI, GraphNetworkTOTALVI
 from scvi.nn._utils import ExpActivation
-
-from torch_geometric.nn import SGConv, GraphNorm
 
 torch.backends.cudnn.benchmark = True
 
@@ -119,6 +117,12 @@ class TOTALVAE(BaseMinifiedModeModuleClass):
         self,
         n_input_genes: int,
         n_input_proteins: int,
+        path_to_graphs: str,
+        graph_n_layers: int,
+        graph_conv_type: str,
+        graph_norm_type: str,
+        graph_act_type: str,
+        graph_sgc_Kparam: int,
         n_batch: int = 0,
         n_labels: int = 0,
         n_hidden: int = 256,
@@ -255,15 +259,26 @@ class TOTALVAE(BaseMinifiedModeModuleClass):
             use_layer_norm=use_layer_norm_encoder,
             **_extra_encoder_kwargs,
         )
-
-        self.gnn = SGConv(n_latent, n_latent, 1)
-        self.gnn_norm = GraphNorm(n_latent)
         
-        graph = torch.load("/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/code/train_val_subgraphs.pt")
-        self.register_buffer("train_edge", graph["train_edge_index"])
-        self.register_buffer("train_weight", graph["train_edge_weight"])
-        self.register_buffer("val_edge", graph["val_edge_index"])
-        self.register_buffer("val_weight", graph["val_edge_weight"])
+        ###########################################
+        ### ADDED GNN STUFF FOR SPATIAL-TOTALVI ###
+        ###########################################
+        self.gnn = GraphNetworkTOTALVI(
+            n_layers=graph_n_layers,
+            n_latent=n_latent,
+            conv_type=graph_conv_type,
+            norm_type=graph_norm_type,
+            act_type=graph_act_type,
+            sgconv_K=graph_sgc_Kparam
+        )
+        
+        self.graph = torch.load(path_to_graphs, weights_only=False)
+        self.register_buffer("full_edge", self.graph["full_edge_index"])
+        self.register_buffer("full_weight", self.graph["full_edge_weight"])
+        self.register_buffer("train_edge", self.graph["train_edge_index"])
+        self.register_buffer("train_weight", self.graph["train_edge_weight"])
+        self.register_buffer("val_edge", self.graph["val_edge_index"])
+        self.register_buffer("val_weight", self.graph["val_edge_weight"])
 
         _extra_decoder_kwargs = extra_decoder_kwargs or {}
         self.decoder = DecoderTOTALVI(
@@ -600,18 +615,16 @@ class TOTALVAE(BaseMinifiedModeModuleClass):
         qz, ql, latent, untran_latent = self.encoder(
             encoder_input, batch_index, *categorical_input
         )
-
         z = latent["z"]
 
         # GNN  
-        if z.shape[0] == 2467:  
+        if z.shape[0] == len(self.graph["train_indices"]):  
             z = self.gnn(z, self.train_edge, self.train_weight)
-        elif z.shape[0] == 25:  
+        elif z.shape[0] == len(self.graph["val_indices"]):  
             z = self.gnn(z, self.val_edge, self.val_weight)
+        else:
+            z = self.gnn(z, self.full_edge, self.full_weight)
 
-    
-        # z = self.gnn(z, self.G_edges, self.G_weight)
-        z = self.gnn_norm(z)
 
         untran_z = untran_latent["z"]
         untran_l = untran_latent["l"]

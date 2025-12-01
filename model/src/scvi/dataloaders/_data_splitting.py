@@ -562,7 +562,7 @@ class SemiSupervisedDataSplitter(pl.LightningDataModule):
             return self.data_loader_class(
                 self.adata_manager,
                 indices=self.val_idx,
-                shuffle=False,
+                shuffle=True,
                 drop_last=False,
                 pin_memory=self.pin_memory,
                 **self.data_loader_kwargs,

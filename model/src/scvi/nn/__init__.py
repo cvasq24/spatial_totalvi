@@ -8,6 +8,7 @@ from ._base_components import (
     LinearDecoderSCVI,
     MultiDecoder,
     MultiEncoder,
+    GraphNetworkTOTALVI
 )
 from ._embedding import Embedding
 
@@ -22,4 +23,5 @@ __all__ = [
     "MultiEncoder",
     "MultiDecoder",
     "Embedding",
+    "GraphNetworkTOTALVI",
 ]
