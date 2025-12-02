@@ -1,0 +1,209 @@
+---
+title: "Bayespace"
+output: html_notebook
+---
+
+```{r environment, message=FALSE}
+
+# Run bayes_space_umap_DE.ipynb first to generate rowData.csv, colData.csv, and counts.csv.gq
+# following BayesSpace Vignette: https://github.com/edward130603/BayesSpace/blob/devel/vignettes/BayesSpace.Rmd
+library(SingleCellExperiment)
+library(Matrix)
+library(BayesSpace)
+library(scater)
+library(imcRtools)
+
+
+# ---- Read row/col/counts ----
+rowData <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/rowData.csv",
+                    stringsAsFactors = FALSE,
+                    row.names = 1)
+
+colData <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/colData.csv",
+                    stringsAsFactors = FALSE,
+                    row.names = 1,
+                    check.names = FALSE)  # keep spot IDs untouched
+
+counts <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/counts.csv.gz",
+                   row.names = 1,
+                   check.names = FALSE,
+                   stringsAsFactors = FALSE)
+
+# counts is currently spots x genes
+counts <- as.matrix(counts)
+counts <- t(counts)   # now genes x spots
+
+# rowData = genes
+rowData <- DataFrame(gene_id = rownames(counts),
+                     row.names = rownames(counts))
+
+# colData = spots
+colData <- colData[ colnames(counts), , drop=FALSE ]  # align
+
+sce <- SingleCellExperiment(
+    assays  = list(counts = counts),
+    rowData = rowData,
+    colData = colData
+)
+
+sce
+
+# Extract coordinates from spot barcodes (like "29x42")
+coords <- do.call(rbind, strsplit(colnames(sce), "x"))
+
+colData(sce)$array_row <- as.integer(coords[,1])
+colData(sce)$array_col <- as.integer(coords[,2])
+
+# Verify
+head(colData(sce))
+
+
+# Sanity checks (run these):
+stopifnot(identical(colnames(sce), rownames(colData(sce))))
+stopifnot(all(c("array_row", "array_col") %in% colnames(colData(sce))))
+
+
+```
+
+
+```{r spatial_preprocess}
+set.seed(102)
+sce <- spatialPreprocess(
+  sce,
+  platform   = "ST",    # ← match the vignette
+  n.PCs      = 10,      # ← d
+  n.HVGs     = 2000,
+  log.normalize = TRUE
+)
+
+```
+
+
+```{r spatial_cluster}
+set.seed(149)
+sce <- spatialCluster(
+  sce,
+  q           = 8,        # chosen number of clusters
+  platform    = "ST",     # as in the vignette, no Visium complexity
+  d           = 10,       # must match n.PCs
+  init.method = "mclust",
+  model       = "t",
+  gamma       = 2,
+  nrep        = 10000,     # 10000+ for final runs
+  burn.in     = 100,
+  save.chain  = TRUE
+)
+
+head(colData(sce))
+
+
+```
+```{r cluster_sce}
+
+clusterPlot(sce, label = "spatial.cluster")
+
+```
+
+```{r pca_cluster_plot}
+
+library(BayesSpace)
+
+clusterPlot(sce, label = "cluster.init")
+
+```
+
+```{r plot_spatial_}
+
+sce <- runUMAP(sce, dimred = "PCA", name = "UMAP")
+
+plotUMAP(sce, colour_by = "spatial.cluster")
+
+```
+```{r pca_embedding}
+
+plotReducedDim(sce, dimred = "PCA", colour_by = "spatial.cluster")
+
+```
+
+```{r spatial_enhance}
+# # Skipped
+# # Takes too long with nrep 100000
+# set.seed(149)  # for reproducibility
+# sce.enh <- spatialEnhance(
+#   sce,
+#   q            = 8,
+#   platform     = "ST",  #Visium doesn't work with our data, and recommended to use ST 
+#   d            = 10,
+#   model        = "t",
+#   gamma        = 2,
+#   jitter.prior = 0.3,
+#   jitter.scale = 0,    # adaptive tuning as in the vignette
+#   nrep         = 5000, # 
+#   burn.in      = 100,
+#   save.chain   = TRUE,
+#   cores        = 4
+# )
+# 
+# head(colData(sce.enh))
+# clusterPlot(sce.enh)
+
+```
+
+
+```{r plot_umap}
+# plotUMAP(sce.enh, colour_by = "spatial.cluster")
+
+```
+
+```{r bayes_umap}
+
+umap_df <- as.data.frame(reducedDim(sce, "UMAP"))
+umap_df$barcode <- rownames(umap_df)
+write.csv(umap_df, "/Users/mayjang/Desktop/536_project/results/bayes_space_results/umap_bayes.csv", row.names = FALSE)
+
+```
+
+
+```{r export_counts_matrix}
+write.csv(
+    as.matrix(counts(sce)),
+    "/Users/mayjang/Desktop/536_project/results/bayes_space_results/counts_bayes.csv",
+    quote = FALSE
+)
+```
+
+
+```{r export_clusters}
+write.csv(
+    as.data.frame(colData(sce)$spatial.cluster),
+    "/Users/mayjang/Desktop/536_project/results/bayes_space_results/bayes_clusters.csv",
+    quote = FALSE
+)
+
+```
+
+```{r export_metadata}
+
+library(tibble)
+
+meta <- as.data.frame(colData(sce))
+meta <- rownames_to_column(meta, var = "barcode")
+
+write.csv(meta,
+          "/Users/mayjang/Desktop/536_project/results/bayes_space_results/metadata_bayes.csv",
+          row.names = FALSE,
+          quote = TRUE)
+
+```
+
+
+```{r export_embeddings_pca}
+write.csv(
+    reducedDim(sce, "PCA"),
+    "/Users/mayjang/Desktop/536_project/results/bayes_space_results/pca_bayes.csv",
+    quote = FALSE
+)
+
+```
+
+
