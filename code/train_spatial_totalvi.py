@@ -11,9 +11,9 @@ import scanpy as sc
 from graph.graph import prep_graph_splits
 
 path_to_mdata = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/tonsil/tonsil_pp_svg.h5mu"
-path_to_full_graph = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/graph/graph_k5_sim_inv.pt"
-path_to_split_graph = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/graph/k5_sim_inv_train_val_subgraphs.pt"
-path_to_model = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/trained_models/sim_inv/totalvi_k5_1layer_SGC_k1.pt"
+path_to_full_graph = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/graph/graph_k5_conn.pt"
+path_to_split_graph = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/graph/k5_conn_train_val_subgraphs.pt"
+path_to_model = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/trained_models/conn/totalvi_k5_1layer_SGC_k1.pt"
 
 #############################
 ### Load data & subgraphs ###

@@ -622,8 +622,8 @@ class TOTALVAE(BaseMinifiedModeModuleClass):
             z = self.gnn(z, self.train_edge, self.train_weight)
         elif z.shape[0] == len(self.graph["val_indices"]):  
             z = self.gnn(z, self.val_edge, self.val_weight)
-        else:
-            z = self.gnn(z, self.full_edge, self.full_weight)
+        # else:
+        #     z = self.gnn(z, self.full_edge, self.full_weight)
 
 
         untran_z = untran_latent["z"]
