@@ -1,0 +1,175 @@
+---
+title: "Bayespace"
+output: html_notebook
+---
+
+```{r environment, message=FALSE}
+
+# Run bayes_space_umap_DE.ipynb first to generate rowData.csv, colData.csv, and counts.csv.gq
+# following BayesSpace Vignette: https://github.com/edward130603/BayesSpace/blob/devel/vignettes/BayesSpace.Rmd
+library(SingleCellExperiment)
+library(Matrix)
+library(BayesSpace)
+library(scater)
+library(imcRtools)
+
+
+# ---- Read row/col/counts ----
+rowData <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/rowData.csv",
+                    stringsAsFactors = FALSE,
+                    row.names = 1)
+
+colData <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/colData.csv",
+                    stringsAsFactors = FALSE,
+                    row.names = 1,
+                    check.names = FALSE)  # keep spot IDs untouched
+
+counts <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/counts.csv.gz",
+                   row.names = 1,
+                   check.names = FALSE,
+                   stringsAsFactors = FALSE)
+
+# counts is currently spots x genes
+counts <- as.matrix(counts)
+counts <- t(counts)   # now genes x spots
+
+# rowData = genes
+rowData <- DataFrame(gene_id = rownames(counts),
+                     row.names = rownames(counts))
+
+# colData = spots
+colData <- colData[ colnames(counts), , drop=FALSE ]  # align
+
+sce_full <- SingleCellExperiment(
+    assays  = list(counts = counts),
+    rowData = rowData,
+    colData = colData
+)
+
+coords <- do.call(rbind, strsplit(colnames(sce_full), "x"))
+colData(sce_full)$array_row <- as.integer(coords[,1])
+colData(sce_full)$array_col <- as.integer(coords[,2])
+
+n_cells <- ncol(sce_full)
+cat("Total spots =", n_cells, "\n")
+
+
+```
+
+
+```{r spatial_preprocess}
+# RUNTIME SCALING LOOP
+
+subset_fracs <- c(0.2, 0.4, 0.6, 0.8, 1.0)
+results <- data.frame()
+
+set.seed(102)
+
+for (frac in subset_fracs) {
+
+    cat("\n=====================================\n")
+    cat(" Running subset:", frac*100, "%\n")
+    cat("=====================================\n")
+
+    n_sub <- round(n_cells * frac)
+    idx <- sample(seq_len(n_cells), n_sub)
+    sce_sub <- sce_full[, idx]         
+
+    # Preprocess
+    sce_sub <- spatialPreprocess(
+        sce_sub,
+        platform = "ST",
+        n.PCs = 10,
+        n.HVGs = 2000,
+        log.normalize = TRUE
+    )
+    
+    # Cluster
+    start <- Sys.time()
+
+    set.seed(149)
+    sce_sub <- spatialCluster(
+        sce_sub,
+        q = 8,
+        platform = "ST",
+        d = 10,
+        init.method = "mclust",
+        model = "t",
+        gamma = 2,
+        nrep = 10000,
+        burn.in = 100,
+        save.chain = FALSE
+    )
+
+    end <- Sys.time()
+    runtime <- as.numeric(end - start, units = "secs")
+
+    saveRDS(sce_sub, paste0("bayes_subset_", frac*100, ".rds"))
+
+    results <- rbind(
+        results,
+        data.frame(
+            subset_percent = frac*100,
+            n_cells = n_sub,
+            runtime_sec = runtime
+        )
+    )
+}
+
+
+```
+
+
+```{r spatial_cluster}
+write.csv(results, "/Users/mayjang/Desktop/536_project/results/bayespace_runtime_results.csv")
+
+```
+
+
+
+```{r spatial_cluster}
+# Smoothed LOESS trend for clearer scaling behavior
+p <- ggplot(results, aes(x = subset_percent, y = runtime_sec)) +
+  geom_point(size = 3, color = "#E74C3C") +
+  geom_smooth(
+    method = "loess",
+    se = FALSE,
+    color = "#2C3E50",
+    linewidth = 1.5
+  ) +
+  theme_classic(base_size = 16) +
+  labs(
+    title = "BayesSpace Runtime vs Dataset Size",
+    x = "Dataset size (%)",
+    y = "Runtime (seconds)"
+  )
+
+ggsave("/Users/mayjang/Desktop/536_project/results/bayespace_runtime_plot_smoothed.png", p, width = 8, height = 6, dpi = 300)
+
+print(p)
+
+
+```
+```{r spatial_cluster}
+library(ggplot2)
+library(readr)
+
+p <- ggplot(results, aes(x = subset_percent, y = runtime_sec)) +
+  geom_line(size = 1.2, color = "#2C3E50") +
+  geom_point(size = 3, color = "#E74C3C") +
+  theme_minimal(base_size = 15) +
+  labs(
+    title = "BayesSpace Runtime vs Dataset Size",
+    x = "Dataset size (%)",
+    y = "Runtime (seconds)"
+  )
+
+print(p)
+
+ggsave("/Users/mayjang/Desktop/536_project/results/bayespace_runtime_plot.png", p, width = 8, height = 6, dpi = 300)
+
+
+```
+
+
+
