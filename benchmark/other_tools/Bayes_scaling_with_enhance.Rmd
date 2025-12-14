@@ -1,0 +1,200 @@
+---
+title: "bayesspace_pca_enhance_scaling"
+output: html_document
+date: "2025-12-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r environment, message=FALSE}
+library(BayesSpace)
+library(SingleCellExperiment)
+library(Matrix)
+library(BayesSpace)
+library(scater)
+library(imcRtools)
+# Run bayes_space_umap_DE.ipynb first to generate rowData.csv, colData.csv, and counts.csv.gq
+# following BayesSpace Vignette: https://github.com/edward130603/BayesSpace/blob/devel/vignettes/BayesSpace.Rmd
+
+
+# ---- Read row/col/counts ----
+rowData <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/rowData.csv",
+                    stringsAsFactors = FALSE,
+                    row.names = 1)
+
+colData <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/colData.csv",
+                    stringsAsFactors = FALSE,
+                    row.names = 1,
+                    check.names = FALSE)  # keep spot IDs untouched
+
+counts <- read.csv("/Users/mayjang/Desktop/536_project/data/bayes_space_data/counts.csv.gz",
+                   row.names = 1,
+                   check.names = FALSE,
+                   stringsAsFactors = FALSE)
+
+# counts is currently spots x genes
+counts <- as.matrix(counts)
+counts <- t(counts)   # now genes x spots
+
+# rowData = genes
+rowData <- DataFrame(gene_id = rownames(counts),
+                     row.names = rownames(counts))
+
+# colData = spots
+colData <- colData[ colnames(counts), , drop=FALSE ]  # align
+
+sce_full <- SingleCellExperiment(
+    assays  = list(counts = counts),
+    rowData = rowData,
+    colData = colData
+)
+
+coords <- do.call(rbind, strsplit(colnames(sce_full), "x"))
+colData(sce_full)$array_row <- as.integer(coords[,1])
+colData(sce_full)$array_col <- as.integer(coords[,2])
+
+n_cells <- ncol(sce_full)
+cat("Total spots =", n_cells, "\n")
+
+
+```
+
+
+```{r cars}
+subset_fracs <- c(0.2, 0.4, 0.6, 0.8, 1.0)
+
+# scaling-mode iteration counts
+nrep_cluster <- 5000
+nrep_enh     <- 1000
+
+results_bayesspace <- data.frame()
+
+n_cells <- ncol(sce_full)
+set.seed(102)
+
+
+for (frac in subset_fracs) {
+
+  cat("\n=====================================\n")
+  cat(" BayesSpace scaling:", frac * 100, "%\n")
+  cat("=====================================\n")
+
+  ## ---- subset ----
+  n_sub <- round(n_cells * frac)
+  idx <- sample(seq_len(n_cells), n_sub)
+  sce_sub <- sce_full[, idx]
+
+  ## ---- preprocess ----
+  sce_sub <- spatialPreprocess(
+    sce_sub,
+    platform = "ST",
+    n.PCs = 10,
+    n.HVGs = 2000,
+    log.normalize = TRUE
+  )
+
+  ## ---- clustering ----
+  start_cluster <- Sys.time()
+
+  sce_sub <- spatialCluster(
+    sce_sub,
+    q = 8,
+    platform = "ST",
+    d = 10,
+    model = "t",
+    gamma = 2,
+    nrep = nrep_cluster,
+    burn.in = 100,
+    save.chain = FALSE
+  )
+
+  runtime_cluster <- as.numeric(
+    Sys.time() - start_cluster,
+    units = "secs"
+  )
+
+  ## ---- enhancement ----
+  start_enh <- Sys.time()
+
+  sce_sub_enh <- spatialEnhance(
+    sce_sub,
+    q = 8,
+    platform = "ST",
+    d = 10,
+    model = "t",
+    gamma = 2,
+    jitter.prior = 0.3,
+    jitter.scale = 0,
+    nrep = nrep_enh,
+    burn.in = 100,
+    save.chain = FALSE,
+    cores = 4
+  )
+
+  runtime_enh <- as.numeric(
+    Sys.time() - start_enh,
+    units = "secs"
+  )
+
+  ## ---- total runtime ----
+  runtime_total <- runtime_cluster + runtime_enh
+
+  ## ---- store results ----
+  results_bayesspace <- rbind(
+    results_bayesspace,
+    data.frame(
+      method = "BayesSpace",
+      subset_percent  = frac * 100,
+      n_cells         = n_sub,
+      runtime_cluster = runtime_cluster,
+      runtime_enhance = runtime_enh,
+      runtime_total   = runtime_total
+    )
+  )
+}
+
+results_bayesspace
+
+
+```
+
+## Including Plots
+
+```{r pressure, echo=FALSE}
+
+library(ggplot2)
+
+h <- ggplot(results_bayesspace,
+       aes(x = n_cells, y = runtime_total)) +
+  geom_point(size = 3, color = "#2C7BB6") +
+  geom_line(color = "#2C7BB6") +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(
+    x = "Number of spatial spots (log scale)",
+    y = "Total runtime (seconds, log scale)",
+    title = "BayesSpace computational scaling"
+  ) +
+  theme_bw()
+h
+
+ggsave(
+  filename = "/Users/mayjang/Desktop/536_project/results/bayes_space_results/bayesspace_runtime_scaling.png",
+  plot = h,
+  width = 6,
+  height = 4,
+  dpi = 300
+)
+```
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
