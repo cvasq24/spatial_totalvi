@@ -608,7 +608,7 @@ class TOTALVAE(BaseMinifiedModeModuleClass):
             encoder_input = torch.cat((x_, y_, cont_covs), dim=-1)
         else:
             encoder_input = torch.cat((x_, y_), dim=-1)
-        if cat_covs is not None and self.encode_covariates is True:
+        if cat_covs is  not None and self.encode_covariates is True:
             categorical_input = torch.split(cat_covs, 1, dim=1)
         else:
             categorical_input = ()
@@ -622,8 +622,9 @@ class TOTALVAE(BaseMinifiedModeModuleClass):
             z = self.gnn(z, self.train_edge, self.train_weight)
         elif z.shape[0] == len(self.graph["val_indices"]):  
             z = self.gnn(z, self.val_edge, self.val_weight)
-        # else:
-        #     z = self.gnn(z, self.full_edge, self.full_weight)
+        else:
+            print("here?")
+            z = self.gnn(z, self.full_edge, self.full_weight)
 
 
         untran_z = untran_latent["z"]

@@ -13,7 +13,7 @@ from graph.graph import prep_graph_splits
 path_to_mdata = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/tonsil/tonsil_pp_svg.h5mu"
 path_to_full_graph = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/graph/graph_k5_conn.pt"
 path_to_split_graph = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/graph/k5_conn_train_val_subgraphs.pt"
-path_to_model = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/trained_models/conn/totalvi_k5_1layer_SGC_k1.pt"
+path_to_model = "/ubc/cs/research/beaver/projects/carlos/spatial_totalvi/data/trained_models/conn/totalvi_k5_3layer_GCN_k1_long.pt"
 
 #############################
 ### Load data & subgraphs ###
@@ -44,8 +44,8 @@ TOTALVI.setup_mudata(
 model = TOTALVI(
     mdata,
     path_to_graphs=path_to_split_graph,
-    graph_n_layers=1,
-    graph_conv_type="SGC",
+    graph_n_layers=3,
+    graph_conv_type="GCN",
     graph_norm_type="layer",
     graph_act_type="elu",
     graph_sgc_Kparam=1
@@ -56,7 +56,8 @@ print(model.module.gnn)
 ### Train & save ###
 ####################
 model.train(
-    max_epochs=400,
+    max_epochs=10000,
+    early_stopping=False,
     batch_size=len(subgraphs["train_indices"]),
     external_indexing=[subgraphs["train_indices"], subgraphs["val_indices"]]
 )
