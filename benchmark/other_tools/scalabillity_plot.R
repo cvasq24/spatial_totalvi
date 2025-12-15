@@ -13,7 +13,7 @@ df_concat <- bind_rows(df.list, .id = "model")
 
 p1 <- ggplot(df_concat, aes(x = subset_percent, y = runtime_sec, colour = model)) +
     geom_point(size = 3) +
-    geom_line(size = 1) +
+    geom_line(linewidth = 1) +
     scale_colour_brewer(palette = 'Set2') +
     labs(y = "Runtime (s)", x = 'Dataset size (%)') +
     theme_classic()
